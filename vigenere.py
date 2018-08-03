@@ -1,30 +1,40 @@
+"""
+  ------------------------------------------------------
+  
+    AUTOMATIC VIGENERE TEXT DECIPHERING IN PYTHON
+    
+  ------------------------------------------------------
+"""
+
 import pprint
 import string
 import operator
-
-from collections import Counter
-import re
 
 """
   --------------------------------
     Useful CONSTANTS
   --------------------------------
 """
-FREQUENCY = {
+# Usual frequencies for some languages
+USUAL_FREQUENCIES = {
     'fra': [9.42,1.02,2.64,3.39,15.87,0.95,1.04,0.77,8.41,0.89,0.0,5.34,3.24,7.15,5.14,2.86,1.06,6.46,7.90,7.26,6.24,2.15,0.0,0.30,0.24,0.32],
     'eng': [8.08,1.67,3.18,3.99,12.56,2.17,1.80,5.27,7.24,0.14,0.63,4.04,2.60,7.38,7.47,1.91,0.09,6.42,6.59,9.15,2.79,1.00,1.89,0.21,1.65,0.07]
 }
 
+# Usual index of correlation for some languages
 USUAL_IC = {
     'fra' : 0.0778,
     'eng' : 0.0667
 }
 
+# Default file name (why not?)
+DEFAULT_FILE_NAME = "vig.txt"
+
 
 """
-  --------------------------------
-    Useful functions
-  --------------------------------
+  ------------------------------------
+    Useful cryptographic functions
+  ------------------------------------
 """
 
 def caesar(chain, key):
@@ -59,6 +69,8 @@ def vigenere(chain, key):
         :type key: string
         :return: deciohered text
         :rtype: string
+
+        ..to do:: code optimizing 
     """
     # Key is a word (letters)
     result = [""] * 21
@@ -66,6 +78,7 @@ def vigenere(chain, key):
     for i in range(lg):
         tested_chain = chain[i::lg]
         result[i] = caesar(tested_chain, key[i])
+        
     # Re-assembling subchains
     seq = ""
     try:
@@ -78,6 +91,33 @@ def vigenere(chain, key):
     return seq
 
 
+def substitution(chain, translate):
+    """
+        Monoalphabetic substitution
+
+        :param chain: text to translate
+        :param translate: dict containing all known substitution (can be partial)
+        :type arg1: string
+        :type arg1: dict
+        :return: translated text
+        :rtype: string
+
+        :Example:
+
+        >>> substitution("abcd", {"b": "0", "d": "1"})
+        a0c1
+    """
+    keys   = "".join(key   for key, value in translate.items())
+    values = "".join(value for key, value in translate.items())
+
+    return chain.translate(str.maketrans(keys,values))
+
+
+"""
+  ------------------------------------
+    Useful cryptanalysis functions
+  ------------------------------------
+"""
 def IC_calculation(chain):
     """
         Index of Coincidence calculation, in order to estimate (later) Vigenere key length
@@ -87,7 +127,7 @@ def IC_calculation(chain):
         :return: index of coincidence for the text
         :rtype: float
     """
-    app = list_to_array(letters_apparition(chain))
+    app = letters_apparitions(chain)
     s = sum (n*(n-1) for n in app)
     total = sum(app)
     res = (s/(total*(total-1)))
@@ -115,20 +155,20 @@ def caesar_key_guess(chain):
     for dec in range(26):
 
         tested_chain = caesar(chain, -dec)
-        freq_tbl = list_to_array(frequencies_analysis(tested_chain))
+        freq_tbl = frequencies_analysis(tested_chain)
 
-        # Correlation is (letter frequency * usual frequency), summed for every letter
-        correl = sum(a * b for a, b in zip(freq_tbl,FREQUENCY[LANG]))
+        # Correlation is (letter USUAL_FREQUENCIES * usual USUAL_FREQUENCIES), summed for every letter
+        correl = sum(a * b for a, b in zip(freq_tbl,USUAL_FREQUENCIES[LANG]))
         correlation_list[dec] = correl
 
-        # Difference is the distance between letter frequency and usual frequency, for each letter.
+        # Difference is the distance between letter USUAL_FREQUENCIES and usual USUAL_FREQUENCIES, for each letter.
         lg = float(len(tested_chain))
-        diff = sum(abs(b - FREQUENCY[LANG][a]) for a, b in enumerate([100 * lettre / lg for lettre in map(tested_chain.count, string.ascii_uppercase)]))
+        diff = sum(abs(b - USUAL_FREQUENCIES[LANG][a]) for a, b in enumerate([100 * letter / lg for letter in map(tested_chain.count, string.ascii_uppercase)]))
 
         diff_list[dec] = diff
- 
-    sorted_list = sorted(correlation_list.items(), key=operator.itemgetter(1), reverse=True)
 
+    # Let's return the key og the highest value (correlation)
+    sorted_list = sorted(correlation_list.items(), key=operator.itemgetter(1), reverse=True)
     offset = sorted_list[0][0]
 
     return offset
@@ -140,64 +180,47 @@ def vigenere_keylength_guess(chain):
     
         We try lengthes between 2 and 20. For each length, we calculate IC for every subchains, and then the mean.
         If the mean IC for one length is greater than the usual IC for target language, this length is a probable one.
+        We can't be sure to find an eligible value.
+        
         Source : https://fr.wikipedia.org/wiki/Indice_de_coïncidence
                  https://en.wikipedia.org/wiki/Index_of_coincidence 
 
 
         :param chain: ciphered text
         :type chain: string
-        :return: probable Vigenere's key length
+        :return: probable Vigenere's key length (returns 0 if not found)
         :rtype: int
     """
-    IC = [0] * 21
     lg = 0
-    for lg_test in range(1, 21):
-        ic_tmp = 0.0
-        for c in range(0, lg_test):
-            t = IC_calculation(chain[c::lg_test])
-            ic_tmp += t
-        IC[lg_test] = ic_tmp / lg_test
-        if (IC[lg_test] > USUAL_IC['fra']):
-            lg = lg_test
+    while (True):
+        lg = lg + 1
+        if (lg == 21):
             break
+        else:
+            ic = sum(IC_calculation(chain[c::lg]) for c in range(0, lg)) / lg
+            if (ic > USUAL_IC['fra']):
+                return lg
 
-    return lg
+    return 0
 
 
-def frequencies_analysis(chain, tri = False):
+def frequencies_analysis(chain):
     """
-        Analyse frequentielle d'une chaîne
+        Text frequency analysis
+        
+        :param chain: any text
+        :type chain: string
+        :return: frequency of apparition for each letter
+        :rtype: float[]
     """
-    liste_freq = Counter(chain)
-    del liste_freq['\r']
-    del liste_freq['\n']
-    del liste_freq[' ']    
+    app = letters_apparitions(chain)
+    total_length = len(chain)
+    # Frequency calculation, for each letter 
+    freq = [0.0] * 26
+    for i in range(26):
+        freq[i] = float(app[i] / total_length * 100)
 
-    # On cherche le nombre total de caractères 
-    tc = sum(liste_freq.values())
-    # On remplace le nombre d'occurrences par leur fréquence
-    for letter in liste_freq:
-        freq = float(liste_freq[letter] / tc * 100)
-        liste_freq[letter] = freq
-    # On retrie
-    if (tri):
-        sorted_liste = sorted(liste_freq.items(), key=operator.itemgetter(1), reverse=True)
-    else:
-        sorted_liste = sorted(liste_freq.items(), key=operator.itemgetter(0))
-
-    return sorted_liste
-
-
-def letters_apparition(chain):
-    """
-        Comptage simple des occurrences des lettres d'une chaîne
-    """
-    l = Counter(chain)
-    del l['\r']
-    del l['\n']
-    del l[' ']
-    
-    return sorted(l.items())
+    return freq
 
 
 def vigenere_key_search(chain, lg) :
@@ -216,38 +239,24 @@ def vigenere_key_search(chain, lg) :
         
     return key
 
-
-def list_to_array(liste):
+"""
+  ------------------------------------
+    Other useful functions
+  ------------------------------------
+"""
+def letters_apparitions(chain):
     """
-        Transform from a list (issued from Counter class) to an easier format
+        Apparition count
+
+        :param chain: chain
+        :return: array of integer
+        :rtype: int[]
     """
-    ret = [0] * 26
-    for k,v in liste:
-        ret[ord(k)-65] = v
+    res = []
+    for fq in map(chain.count, string.ascii_uppercase):
+        res.append(fq)
 
-    return ret
-
-
-def substitution(chain, translate):
-    """
-        Monoalphabetic substitution
-
-        :param chain: text to translate
-        :param translate: dict containing all known substitution (can be partial)
-        :type arg1: string
-        :type arg1: dict
-        :return: translated text
-        :rtype: string
-
-        :Example:
-
-        >>> substitution("abcd", {"b": "0", "d": "1"})
-        a0c1
-    """
-    keys   = "".join(key   for key, value in translate.items())
-    values = "".join(value for key, value in translate.items())
-
-    return chain.translate(str.maketrans(keys,values))
+    return res
 
 
 def clean(chain):
@@ -285,13 +294,19 @@ def clean(chain):
 
 LANG = 'fra'
 
+file_name = input("Please enter the file name (containing Vigenere's ciphered text) [{}]: ".format(DEFAULT_FILE_NAME))
+
+# Defaut value, if you want...
+if (len(file_name) == 0):
+    file_name = str(DEFAULT_FILE_NAME)
+    
 # Text reading and cleaning
 # Text must be uppercased, no space
-text = ""
-with open("vig.txt", 'r', encoding='utf-8') as f:
-    text = text + f.read()
+original = ""
+with open(file_name, 'r', encoding='utf-8') as f:
+    original = original + f.read()
 
-text = clean(text)
+text = clean(original)
 print()
 
 # First we need to estimate the key length
@@ -304,7 +319,7 @@ print('Probable key        : {}'.format(key))
 
 # And the we decipher the text
 print()
-original = vigenere(text, key)
-print(original)
+deciphered = vigenere(original, key)
+print(deciphered)
 
 
