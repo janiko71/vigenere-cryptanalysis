@@ -30,11 +30,18 @@ USUAL_IC = {
 def caesar(chain, key):
     """
         Caesar deciphering
+
+        :param chain: ciphered text
+        :param key: letter of offset
+        :type chain: string
+        :type key: int or char
+        :return: deciohered text
+        :rtype: string
     """
 
     # You can specify a letter or an int
     if (not isinstance(key, int)):
-        key = 65 - ord(key) # A verifier
+        key = 65 - ord(key) # we are deciohering, so the key (offset) should be negative
 
     alph=string.ascii_uppercase
     res = chain.translate(str.maketrans(alph,alph[key:]+alph[:key]))
@@ -44,7 +51,14 @@ def caesar(chain, key):
 
 def vigenere(chain, key):
     """
-        Vigenere deciphering
+        Vigenere deciphering, by deciohering subchains with Caesar's method
+
+        :param chain: ciphered text
+        :param key: letter of offset
+        :type chain: string
+        :type key: string
+        :return: deciohered text
+        :rtype: string
     """
     # Key is a word (letters)
     result = [""] * 21
@@ -52,7 +66,7 @@ def vigenere(chain, key):
     for i in range(lg):
         tested_chain = chain[i::lg]
         result[i] = caesar(tested_chain, key[i])
-    # Re-assembling sub-chains
+    # Re-assembling subchains
     seq = ""
     try:
         for i in range(0, len(result[0])):
@@ -67,6 +81,11 @@ def vigenere(chain, key):
 def IC_calculation(chain):
     """
         Index of Coincidence calculation, in order to estimate (later) Vigenere key length
+
+        :param chain: ciphered text
+        :type chain: string
+        :return: index of coincidence for the text
+        :rtype: float
     """
     app = list_to_array(letters_apparition(chain))
     s = sum (n*(n-1) for n in app)
@@ -78,10 +97,17 @@ def IC_calculation(chain):
 
 def caesar_key_guess(chain):
     """
-        Caesar key searching, based on letters frequencies analysis
-        To find the best match, we can use either :
-        - correlation (the highest is the better)
-        - difference (the lowest is the better)
+        Caesar key searching, based on letters frequencies analysis. The best guess is when the 
+        frequencies of the ciphered text is "close" to the usual fequencies (for one language).
+
+        To find the best match between frequencies, we can use either :
+        - correlation (the highest score is the better)
+        - difference (the lowest score is the better)
+
+        :param chain: ciphered text
+        :type chain: string
+        :return: probable Caesar's key offset
+        :rtype: int
     """
     correlation_list = {}
     diff_list = {}
@@ -89,7 +115,7 @@ def caesar_key_guess(chain):
     for dec in range(26):
 
         tested_chain = caesar(chain, -dec)
-        freq_tbl = list_to_array(freq_analyse(tested_chain))
+        freq_tbl = list_to_array(frequencies_analysis(tested_chain))
 
         # Correlation is (letter frequency * usual frequency), summed for every letter
         correl = sum(a * b for a, b in zip(freq_tbl,FREQUENCY[LANG]))
@@ -103,38 +129,42 @@ def caesar_key_guess(chain):
  
     sorted_list = sorted(correlation_list.items(), key=operator.itemgetter(1), reverse=True)
 
-    # Small trick : we have to "reverse" the offset to construct the right key
-    #offset = (26 - sorted_list[0][0]) % 26
     offset = sorted_list[0][0]
 
     return offset
 
 
-def vigenere_key_guess(chain):
+def vigenere_keylength_guess(chain):
     """
         Estimation of Vigenere's key length
     
-        We try lengthes between 2 and 20. For each length, we calculate IC for every sub-chains, and then the mean.
+        We try lengthes between 2 and 20. For each length, we calculate IC for every subchains, and then the mean.
         If the mean IC for one length is greater than the usual IC for target language, this length is a probable one.
         Source : https://fr.wikipedia.org/wiki/Indice_de_coïncidence
                  https://en.wikipedia.org/wiki/Index_of_coincidence 
+
+
+        :param chain: ciphered text
+        :type chain: string
+        :return: probable Vigenere's key length
+        :rtype: int
     """
     IC = [0] * 21
     lg = 0
-    for l in range(1, 21):
+    for lg_test in range(1, 21):
         ic_tmp = 0.0
-        for c in range(0, l):
-            t = IC_calculation(chain[c::l])
+        for c in range(0, lg_test):
+            t = IC_calculation(chain[c::lg_test])
             ic_tmp += t
-        IC[l] = ic_tmp / l
-        if (IC[l] > USUAL_IC['fra']):
-            lg = l
+        IC[lg_test] = ic_tmp / lg_test
+        if (IC[lg_test] > USUAL_IC['fra']):
+            lg = lg_test
             break
 
     return lg
 
 
-def freq_analyse(chain, tri = False):
+def frequencies_analysis(chain, tri = False):
     """
         Analyse frequentielle d'une chaîne
     """
@@ -170,9 +200,17 @@ def letters_apparition(chain):
     return sorted(l.items())
 
 
-def search_vigenere_key(chain,lg) :
+def vigenere_key_search(chain, lg) :
     """
-        Searching for Vigenere's most probable key, for a given length
+        Searching for Vigenere's most probable key, for a given length, by guessing
+        the Caesar's offset for each subchain
+
+        :param chain: ciphered text
+        :param lg: key length (must be calculated before)
+        :type chain: string
+        :type lg: int
+        :return: Probable Vigenere's key
+        :rtype: string
     """
     key = "".join(chr(65+caesar_key_guess(chain[i::lg])) for i in range(lg))
         
@@ -257,11 +295,11 @@ text = clean(text)
 print()
 
 # First we need to estimate the key length
-lg = vigenere_key_guess(text)
+lg = vigenere_keylength_guess(text)
 print('Probable key length : {}'.format(lg))
 
 # Then we try to guess the key
-key = search_vigenere_key(text, lg)
+key = vigenere_key_search(text, lg)
 print('Probable key        : {}'.format(key))
 
 # And the we decipher the text
