@@ -45,7 +45,7 @@ def caesar(chain, key):
         :param key: letter of offset
         :type chain: string
         :type key: int or char
-        :return: deciohered text
+        :return: deciphered text
         :rtype: string
     """
 
@@ -67,7 +67,7 @@ def vigenere(chain, key):
         :param key: letter of offset
         :type chain: string
         :type key: string
-        :return: deciohered text
+        :return: deciphered text
         :rtype: string
 
         ..to do:: code optimizing 
@@ -86,7 +86,7 @@ def vigenere(chain, key):
             for j in range(0, lg):
                 seq = seq + result[j][i]
     except:
-        print('Fin')
+        print('End of processing')
    
     return seq
 
@@ -97,8 +97,8 @@ def substitution(chain, translate):
 
         :param chain: text to translate
         :param translate: dict containing all known substitution (can be partial)
-        :type arg1: string
-        :type arg1: dict
+        :type chain: string
+        :type translate: dict
         :return: translated text
         :rtype: string
 
